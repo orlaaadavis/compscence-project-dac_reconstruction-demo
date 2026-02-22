@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>DAC Reconstruction Demo</title>
+  <script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script>
+</head>
+<body>
+  <h1>DAC Reconstruction Demo</h1>
+
+  <!-- Controls -->
+  <label>Length (max 999): 
+    <input id="length" type="number" value="999" min="1" max="999">
+  </label><br>
+  <label>Amplitude: 
+    <input id="amplitude" type="number" value="1" step="0.1">
+  </label><br>
+  <label>Bits: 
+    <input id="bits" type="number" value="8" min="1" max="16">
+  </label><br>
+  <button onclick="updateChart()">Update</button>
+
+  <div id="plot"></div>
+  <p id="status"></p>
+
+  <script>
+    async function updateChart() {
+      let length = document.getElementById('length').value;
+      let amplitude = document.getElementById('amplitude').value;
+      let bits = document.getElementById('bits').value;
+
+      try {
+        // Call backend to regenerate CSV and get MSE
+        let runResponse = await fetch(`/run?length=${length}&amplitude=${amplitude}&bits=${bits}`);
+        if (!runResponse.ok) throw new Error("Backend run failed");
+        let mseText = await runResponse.text();
+        console.log("MSE from backend:", mseText);
+
+        // Force fresh CSV fetch (cache-busting)
+        let response = await fetch('/data?nocache=' + new Date().getTime());
+        let text = await response.text();
+
+        let lines = text.trim().split('\n').slice(1);
+        if (lines.length === 0) throw new Error("CSV empty");
+
+        let analog = [], digital = [], reconstructed = [];
+        lines.forEach(line => {
+          let parts = line.split(',');
+          analog.push(parseFloat(parts[0]));
+          digital.push(parseFloat(parts[1]));
+          reconstructed.push(parseFloat(parts[2]));
+        });
+
+        Plotly.newPlot('plot', [
+          { y: analog, type: 'scatter', name: 'Analog', line: {color: 'red'} },
+          { y: digital, type: 'scatter', name: 'Digital', line: {color: 'blue'} },
+          { y: reconstructed, type: 'scatter', name: 'Reconstructed', line: {color: 'green'} }
+        ], {
+          title: `DAC Reconstruction Demo (Length=${length}, Amplitude=${amplitude}, Bits=${bits}, ${mseText})`,
+          xaxis: { title: 'Sample Index' },
+          yaxis: { title: 'Amplitude' }
+        });
+
+        document.getElementById('status').innerText = `Updated chart with ${length} samples, amplitude=${amplitude}, bits=${bits}, ${mseText}`;
+      } catch (err) {
+        console.error("Error updating chart:", err);
+        document.getElementById('plot').innerHTML = "<p style='color:red'>Error loading chart. Check console.</p>";
+      }
+    }
+
+    // Initial load
+    updateChart();
+  </script>
+</body>
+</html>
